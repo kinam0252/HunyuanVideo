@@ -648,6 +648,11 @@ class HunyuanVideoPipeline(DiffusionPipeline):
         return self._guidance_scale > 1
 
     @property
+    def do_spatio_temporal_guidance(self):
+        # return self._guidance_scale > 1 and self.transformer.config.time_cond_proj_dim is None
+        return self._stg_scale > 1
+
+    @property
     def cross_attention_kwargs(self):
         return self._cross_attention_kwargs
 
@@ -699,6 +704,9 @@ class HunyuanVideoPipeline(DiffusionPipeline):
         enable_tiling: bool = False,
         n_tokens: Optional[int] = None,
         embedded_guidance_scale: Optional[float] = None,
+        stg_mode: Optional[str] = None,
+        stg_block_idx: List[int] = [-1],
+        stg_scale: float = 0.0,
         **kwargs,
     ):
         r"""
@@ -826,7 +834,9 @@ class HunyuanVideoPipeline(DiffusionPipeline):
         self._clip_skip = clip_skip
         self._cross_attention_kwargs = cross_attention_kwargs
         self._interrupt = False
-
+        self._stg_scale = stg_scale
+        self._stg_mode = stg_mode
+        
         # 2. Define call parameters
         if prompt is not None and isinstance(prompt, str):
             batch_size = 1
@@ -901,7 +911,6 @@ class HunyuanVideoPipeline(DiffusionPipeline):
                 prompt_embeds_2 = torch.cat([negative_prompt_embeds_2, prompt_embeds_2])
             if prompt_mask_2 is not None:
                 prompt_mask_2 = torch.cat([negative_prompt_mask_2, prompt_mask_2])
-
 
         # 4. Prepare timesteps
         extra_set_timesteps_kwargs = self.prepare_extra_func_kwargs(
@@ -997,7 +1006,7 @@ class HunyuanVideoPipeline(DiffusionPipeline):
                         freqs_cos=freqs_cis[0],  # [seqlen, head_dim]
                         freqs_sin=freqs_cis[1],  # [seqlen, head_dim]
                         guidance=guidance_expand,
-                        return_dict=True,
+                        return_dict=[None, None, True],
                     )[
                         "x"
                     ]
@@ -1007,6 +1016,26 @@ class HunyuanVideoPipeline(DiffusionPipeline):
                     noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
                     noise_pred = noise_pred_uncond + self.guidance_scale * (
                         noise_pred_text - noise_pred_uncond
+                    )
+                elif not self.do_classifier_free_guidance and self.do_spatio_temporal_guidance:
+                    with torch.autocast(
+                        device_type="cuda", dtype=target_dtype, enabled=autocast_enabled
+                    ):
+                        noise_pred_perturb = self.transformer(  # For an input image (129, 192, 336) (1, 256, 256)
+                            latent_model_input,  # [2, 16, 33, 24, 42]
+                            t_expand,  # [2]
+                            text_states=prompt_embeds,  # [2, 256, 4096]
+                            text_mask=prompt_mask,  # [2, 256]
+                            text_states_2=prompt_embeds_2,  # [2, 768]
+                            freqs_cos=freqs_cis[0],  # [seqlen, head_dim]
+                            freqs_sin=freqs_cis[1],  # [seqlen, head_dim]
+                            guidance=guidance_expand,
+                            return_dict=[stg_block_idx, stg_mode, True],
+                        )[
+                            "x"
+                        ]
+                    noise_pred = noise_pred_perturb + self._stg_scale * (
+                        noise_pred - noise_pred_perturb
                     )
 
                 if self.do_classifier_free_guidance and self.guidance_rescale > 0.0:

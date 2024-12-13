@@ -504,6 +504,9 @@ class HunyuanVideoSampler(Inference):
         embedded_guidance_scale=None,
         batch_size=1,
         num_videos_per_prompt=1,
+        stg_mode=None,
+        stg_block_idx=[-1],
+        stg_scale=0,
         **kwargs,
     ):
         """
@@ -637,7 +640,10 @@ class HunyuanVideoSampler(Inference):
                 guidance_scale: {guidance_scale}
                       n_tokens: {n_tokens}
                     flow_shift: {flow_shift}
-       embedded_guidance_scale: {embedded_guidance_scale}"""
+       embedded_guidance_scale: {embedded_guidance_scale}
+                      stg_mode: {stg_mode}
+                 stg_block_idx: {stg_block_idx}
+                     stg_scale: {stg_scale}"""
         logger.debug(debug_str)
 
         # ========================================================================
@@ -662,6 +668,9 @@ class HunyuanVideoSampler(Inference):
             is_progress_bar=True,
             vae_ver=self.args.vae,
             enable_tiling=self.args.vae_tiling,
+            stg_mode=stg_mode,
+            stg_block_idx=stg_block_idx,
+            stg_scale=stg_scale,
         )[0]
         out_dict["samples"] = samples
         out_dict["prompts"] = prompt

@@ -50,6 +50,12 @@ def add_network_args(parser: argparse.ArgumentParser):
     )
     return parser
 
+def parse_int_list(value):
+    try:
+        # Split the string by commas and convert each part to an integer
+        return [int(x.strip()) for x in value.split(",")]
+    except ValueError:
+        raise argparse.ArgumentTypeError("List must be comma-separated integers.")
 
 def add_extra_models_args(parser: argparse.ArgumentParser):
     group = parser.add_argument_group(
@@ -321,6 +327,12 @@ def add_inference_args(parser: argparse.ArgumentParser):
         help="Prompt for sampling during evaluation.",
     )
     group.add_argument(
+        "--prompt-path",
+        type=str,
+        default=None,
+        help="Prompts path",
+    )
+    group.add_argument(
         "--seed-type",
         type=str,
         default="auto",
@@ -338,6 +350,18 @@ def add_inference_args(parser: argparse.ArgumentParser):
     )
     group.add_argument(
         "--cfg-scale", type=float, default=1.0, help="Classifier free guidance scale."
+    )
+    group.add_argument(
+        "--stg-block-idx",
+        type=parse_int_list,
+        default=None,
+        help="Comma-separated list of integers, e.g., 1,2,3",
+    )
+    group.add_argument(
+        "--stg-scale", type=float, default=0.0,
+    )
+    group.add_argument(
+        "--stg-mode", type=str, default=None,
     )
     group.add_argument(
         "--embedded-cfg-scale",

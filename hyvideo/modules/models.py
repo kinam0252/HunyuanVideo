@@ -333,6 +333,7 @@ class MMSingleStreamBlock(nn.Module):
         max_seqlen_q: Optional[int] = None,
         max_seqlen_kv: Optional[int] = None,
         freqs_cis: Tuple[torch.Tensor, torch.Tensor] = None,
+        stg_mode: Optional[str] = None,
     ) -> torch.Tensor:
         mod_shift, mod_scale, mod_gate = self.modulation(vec).chunk(3, dim=-1)
         x_mod = modulate(self.pre_norm(x), shift=mod_shift, scale=mod_scale)
@@ -362,6 +363,9 @@ class MMSingleStreamBlock(nn.Module):
         assert (
             cu_seqlens_q.shape[0] == 2 * x.shape[0] + 1
         ), f"cu_seqlens_q.shape:{cu_seqlens_q.shape}, x.shape[0]:{x.shape[0]}"
+        
+        if stg_mode == "STG-R":
+            return x
         
         # attention computation start
         if not self.hybrid_seq_parallel_attn:
@@ -668,8 +672,13 @@ class HYVideoDiffusionTransformer(ModelMixin, ConfigMixin):
 
         # Merge txt and img to pass through single stream blocks.
         x = torch.cat((img, txt), 1)
+        stg_block_idx, stg_mode, _ = return_dict
         if len(self.single_blocks) > 0:
-            for _, block in enumerate(self.single_blocks):
+            for i, block in enumerate(self.single_blocks):
+                if stg_block_idx:
+                    curr_stg_mode = stg_mode if i in stg_block_idx else None
+                else:
+                    curr_stg_mode = None
                 single_block_args = [
                     x,
                     vec,
